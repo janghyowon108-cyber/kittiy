@@ -1,26 +1,38 @@
+
+import streamlit as st
 import folium
 from streamlit_folium import st_folium
 
-# 페이지 설정
+# ==================================
+# 1. 페이지 설정
+# ==================================
+
 st.set_page_config(
-    page_title="서울 인기 관광지 TOP 10",
+    page_title="서울 관광지 TOP 10",
     page_icon="🗺️",
     layout="wide"
 )
 
-# 제목
+# ==================================
+# 2. 제목
+# ==================================
+
 st.title("🗺️ 외국인에게 인기 있는 서울 관광지 TOP 10")
-st.markdown(
-    "서울을 여행하는 외국인들에게 추천하는 "
-    "대표 관광지를 지도에서 확인해 보세요! 🇰🇷"
-)
+
+st.markdown("""
+🇰🇷 서울을 여행하는 외국인들에게 추천하는
+서울의 대표 관광지 10곳을 지도에서 확인해 보세요!
+""")
 
 st.info(
     "서울의 대표 관광지를 바탕으로 구성한 추천 목록입니다. "
     "공식 방문객 순위와는 다를 수 있습니다."
 )
 
-# 관광지 데이터
+# ==================================
+# 3. 관광지 데이터
+# ==================================
+
 places = [
     {
         "rank": 1,
@@ -134,18 +146,24 @@ places = [
     }
 ]
 
-# 지도 만들기
+# ==================================
+# 4. 서울 지도 생성
+# ==================================
+
 seoul_map = folium.Map(
     location=[37.5665, 126.9780],
     zoom_start=12,
     tiles="OpenStreetMap"
 )
 
-# 지도에 관광지 표시
+# ==================================
+# 5. 지도에 관광지 표시
+# ==================================
+
 for place in places:
 
     popup_html = f"""
-    <div style="width:220px">
+    <div style="width:220px; font-family:sans-serif;">
         <h4>{place['rank']}. {place['name']}</h4>
         <p>{place['english']}</p>
         <p>{place['description']}</p>
@@ -153,12 +171,18 @@ for place in places:
     """
 
     folium.Marker(
-        location=[place["lat"], place["lon"]],
+        location=[
+            place["lat"],
+            place["lon"]
+        ],
+
         tooltip=f"{place['rank']}. {place['name']}",
+
         popup=folium.Popup(
             popup_html,
             max_width=280
         ),
+
         icon=folium.DivIcon(
             html=f"""
             <div style="
@@ -180,9 +204,13 @@ for place in places:
             icon_size=(30, 30),
             icon_anchor=(15, 15)
         )
+
     ).add_to(seoul_map)
 
-# 지도 출력
+# ==================================
+# 6. 지도 화면 출력
+# ==================================
+
 st.subheader("📍 서울 관광지 위치 지도")
 
 st_folium(
@@ -192,14 +220,20 @@ st_folium(
     returned_objects=[]
 )
 
-# 관광지 설명
+# ==================================
+# 7. 관광지 설명
+# ==================================
+
 st.subheader("✨ 서울 관광지 TOP 10 소개")
 
 left, right = st.columns(2)
 
 for i, place in enumerate(places):
 
-    target = left if i % 2 == 0 else right
+    if i % 2 == 0:
+        target = left
+    else:
+        target = right
 
     with target:
 
@@ -210,7 +244,9 @@ for i, place in enumerate(places):
             )
 
             st.caption(
-                f"{place['english']} · {place['area']} · {place['category']}"
+                f"{place['english']} | "
+                f"{place['area']} | "
+                f"{place['category']}"
             )
 
             st.write(place["description"])
@@ -228,7 +264,10 @@ for i, place in enumerate(places):
                 f"[📍 구글 지도에서 위치 보기]({url})"
             )
 
-# 마무리
+# ==================================
+# 8. 마무리
+# ==================================
+
 st.divider()
 
 st.markdown(
@@ -239,4 +278,3 @@ st.caption(
     "지도 제공: OpenStreetMap | "
     "관광지 위치는 대표 지점 기준입니다."
 )
-
