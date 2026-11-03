@@ -431,11 +431,4 @@ st.markdown(
     "<center>🌈 세계인의 다양한 성격을 탐험해 보세요!</center>",
     unsafe_allow_html=True
 )
-MBTI 프로젝트/
-│
-├── app.py
-├── countriesMBTI_16types (1).csv
-├── requirements.txt
-│
-└── pages/
-    └── 02_세계MBTI.py
+
