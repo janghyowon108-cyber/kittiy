@@ -6,3 +6,7 @@ plotly>=5.18.0
 streamlit
 pandas
 plotly
+streamlit
+pandas
+plotly
+scikit-learn
