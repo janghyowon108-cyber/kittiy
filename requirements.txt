@@ -3,3 +3,5 @@ folium>=0.17.0
 streamlit-folium>=0.22.0
 pandas>=2.0.0
 plotly>=5.18.0
+BASE_DIR = Path(__file__).resolve().parent.parent
+CSV_PATH = BASE_DIR / "temperature.csv"
