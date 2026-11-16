@@ -1,555 +1,546 @@
 
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
+import plotly.express as px
 
-from pathlib import Path
-
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 
-from collections import Counter
 
-# ----------------------------------
-# 1. 페이지 설정
-# ----------------------------------
+# --------------------------------------------------
+# 1. 페이지 기본 설정
+# --------------------------------------------------
 
 st.set_page_config(
-    page_title="AI 붓꽃 품종 예측",
+    page_title="붓꽃 품종 예측 AI",
     page_icon="🌸",
     layout="wide"
 )
 
-st.title("🌸 AI 붓꽃 품종 예측 시스템")
-
+st.title("🌸 붓꽃 품종 예측 AI")
 st.write(
-    "세 가지 머신러닝 분류 알고리즘을 선택하여 "
-    "붓꽃 품종을 예측해 보세요!"
+    "붓꽃의 꽃잎과 꽃받침 정보를 입력하면 "
+    "세 가지 머신러닝 알고리즘이 품종을 예측합니다."
 )
 
-st.divider()
 
-# ----------------------------------
-# 2. CSV 파일 불러오기
-# ----------------------------------
+# --------------------------------------------------
+# 2. 붓꽃 데이터 불러오기
+# --------------------------------------------------
 
 @st.cache_data
-def load_data():
+def load_iris_data():
+    iris = load_iris()
 
-    current_folder = Path(__file__).resolve().parent
+    df = pd.DataFrame(
+        iris.data,
+        columns=[
+            "꽃받침 길이",
+            "꽃받침 너비",
+            "꽃잎 길이",
+            "꽃잎 너비"
+        ]
+    )
 
-    possible_paths = [
-        current_folder.parent / "Iris.csv",
-        current_folder / "Iris.csv",
-        Path.cwd() / "Iris.csv"
+    species_map = {
+        0: "세토사 (Setosa)",
+        1: "버시컬러 (Versicolor)",
+        2: "버지니카 (Virginica)"
+    }
+
+    df["품종"] = [
+        species_map[int(value)]
+        for value in iris.target
     ]
 
-    csv_path = None
-
-    for path in possible_paths:
-        if path.exists():
-            csv_path = path
-            break
-
-    if csv_path is None:
-        st.error("Iris.csv 파일을 찾을 수 없습니다.")
-
-        st.write("검색한 위치:")
-        for path in possible_paths:
-            st.code(str(path))
-
-        st.stop()
-
-    try:
-        data = pd.read_csv(csv_path, encoding="cp949")
-    except UnicodeDecodeError:
-        data = pd.read_csv(csv_path, encoding="utf-8-sig")
-
-    required_columns = [
-        "꽃잎 길이",
-        "꽃잎 너비",
-        "품종"
-    ]
-
-    if not all(col in data.columns for col in required_columns):
-        st.error("CSV 파일의 컬럼명을 확인해주세요.")
-        st.write(data.columns.tolist())
-        st.stop()
-
-    return data
+    return df
 
 
-df = load_data()
+df = load_iris_data()
 
-# ----------------------------------
-# 3. 학습 데이터 설정
-# ----------------------------------
-
-feature_cols = ["꽃잎 길이", "꽃잎 너비"]
-target_col = "품종"
-
-X = df[feature_cols]
-y = df[target_col]
-
-species_names = {
-    "Iris-setosa": "세토사 (Setosa)",
-    "Iris-versicolor": "버시컬러 (Versicolor)",
-    "Iris-virginica": "버지니카 (Virginica)"
-}
+species_order = [
+    "세토사 (Setosa)",
+    "버시컬러 (Versicolor)",
+    "버지니카 (Virginica)"
+]
 
 species_emojis = {
-    "Iris-setosa": "🌼",
-    "Iris-versicolor": "🌷",
-    "Iris-virginica": "🌺"
+    "세토사 (Setosa)": "🌼",
+    "버시컬러 (Versicolor)": "🌷",
+    "버지니카 (Virginica)": "🌺"
 }
 
-colors = {
-    "Iris-setosa": "#3498DB",
-    "Iris-versicolor": "#2ECC71",
-    "Iris-virginica": "#9B59B6"
-}
 
-# ----------------------------------
-# 4. 입력 범위 설정
-# ----------------------------------
+# --------------------------------------------------
+# 3. 머신러닝 알고리즘 만들기
+# --------------------------------------------------
 
-length_min = float(df["꽃잎 길이"].min())
-length_max = float(df["꽃잎 길이"].max())
+def create_models():
 
-width_min = float(df["꽃잎 너비"].min())
-width_max = float(df["꽃잎 너비"].max())
+    models = {
+        "KNN": Pipeline([
+            ("scaler", StandardScaler()),
+            ("model", KNeighborsClassifier(n_neighbors=5))
+        ]),
 
-# ----------------------------------
-# 5. 알고리즘 선택
-# ----------------------------------
-
-st.subheader("🧠 분류 알고리즘 선택")
-
-algorithm = st.selectbox(
-    "사용할 머신러닝 알고리즘을 선택하세요.",
-    [
-        "KNN (K-최근접 이웃)",
-        "Random Forest (랜덤 포레스트)",
-        "SVM (서포트 벡터 머신)"
-    ]
-)
-
-# ----------------------------------
-# 6. 세 가지 모델 생성
-# ----------------------------------
-
-models = {
-
-    "KNN (K-최근접 이웃)": Pipeline([
-        ("scaler", StandardScaler()),
-        ("classifier", KNeighborsClassifier(
-            n_neighbors=5
-        ))
-    ]),
-
-    "Random Forest (랜덤 포레스트)": RandomForestClassifier(
-        n_estimators=100,
-        random_state=42
-    ),
-
-    "SVM (서포트 벡터 머신)": Pipeline([
-        ("scaler", StandardScaler()),
-        ("classifier", SVC(
-            kernel="rbf",
-            C=1.0,
-            gamma="scale",
-            probability=True,
+        "랜덤 포레스트": RandomForestClassifier(
+            n_estimators=100,
             random_state=42
-        ))
-    ])
-}
+        ),
 
-# 선택한 모델 학습
-model = models[algorithm]
-model.fit(X, y)
+        "SVM": Pipeline([
+            ("scaler", StandardScaler()),
+            ("model", SVC(
+                kernel="rbf",
+                C=1.0,
+                gamma="scale"
+            ))
+        ])
+    }
 
-# ----------------------------------
-# 7. 사용자 입력
-# ----------------------------------
+    return models
 
-st.divider()
 
-st.subheader("✏️ 붓꽃 측정값 입력")
+# --------------------------------------------------
+# 4. 품종 예측 및 결과 비교 함수
+# --------------------------------------------------
 
-st.info(
-    f"""
-    입력 가능한 값의 범위
+def run_prediction(x_column, y_column, x_value, y_value):
 
-    🌷 꽃잎 길이: {length_min:.1f} ~ {length_max:.1f} cm
+    X = df[[x_column, y_column]]
+    y = df["품종"]
 
-    🌷 꽃잎 너비: {width_min:.1f} ~ {width_max:.1f} cm
-    """
-)
-
-col1, col2 = st.columns(2)
-
-with col1:
-
-    petal_length = st.number_input(
-        "꽃잎 길이 (cm)",
-        min_value=length_min,
-        max_value=length_max,
-        value=1.4,
-        step=0.1,
-        format="%.1f"
+    # 학습 데이터와 테스트 데이터 분리
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y
     )
 
-with col2:
+    models = create_models()
 
-    petal_width = st.number_input(
-        "꽃잎 너비 (cm)",
-        min_value=width_min,
-        max_value=width_max,
-        value=0.2,
-        step=0.1,
-        format="%.1f"
+    predictions = []
+    accuracies = []
+
+    input_data = pd.DataFrame(
+        [[x_value, y_value]],
+        columns=[x_column, y_column]
     )
 
-input_data = pd.DataFrame(
-    [[petal_length, petal_width]],
-    columns=feature_cols
-)
+    for model_name, model in models.items():
 
-# ----------------------------------
-# 8. 품종 예측
-# ----------------------------------
+        # 모델 학습
+        model.fit(X_train, y_train)
 
-prediction = model.predict(input_data)[0]
+        # 사용자 입력값 예측
+        prediction = model.predict(input_data)[0]
 
-st.divider()
+        # 테스트 데이터 정확도
+        accuracy = model.score(X_test, y_test)
 
-st.subheader("🤖 AI 예측 결과")
+        predictions.append({
+            "알고리즘": model_name,
+            "예측 품종": prediction,
+            "정확도": accuracy
+        })
 
-st.success(
-    f"{species_emojis[prediction]} 예측 품종: "
-    f"{species_names[prediction]}"
-)
+        accuracies.append({
+            "알고리즘": model_name,
+            "테스트 정확도": accuracy * 100
+        })
 
-st.write(f"사용한 알고리즘: **{algorithm}**")
+    result_df = pd.DataFrame(predictions)
+    accuracy_df = pd.DataFrame(accuracies)
 
-result1, result2 = st.columns(2)
+    return result_df, accuracy_df
 
-result1.metric(
-    "꽃잎 길이",
-    f"{petal_length:.1f} cm"
-)
 
-result2.metric(
-    "꽃잎 너비",
-    f"{petal_width:.1f} cm"
-)
+# --------------------------------------------------
+# 5. 그래프 그리기
+# --------------------------------------------------
 
-# ----------------------------------
-# 9. 품종 예측 확률
-# ----------------------------------
+def draw_scatter_graph(x_column, y_column, x_value, y_value):
 
-st.subheader("📊 품종별 예측 확률")
-
-probabilities = model.predict_proba(input_data)[0]
-
-prob_df = pd.DataFrame({
-    "품종": [
-        species_names[name]
-        for name in model.classes_
-    ],
-    "예측 확률": probabilities
-})
-
-st.bar_chart(
-    prob_df.set_index("품종"),
-    y="예측 확률"
-)
-
-# ----------------------------------
-# 10. 붓꽃 분포 그래프
-# ----------------------------------
-
-st.divider()
-
-st.subheader("📈 붓꽃 품종 분포 그래프")
-
-st.write(
-    "가로축: 꽃잎 길이 / 세로축: 꽃잎 너비"
-)
-
-fig = go.Figure()
-
-# 실제 붓꽃 데이터
-for species in df["품종"].unique():
-
-    species_df = df[df["품종"] == species]
-
-    fig.add_trace(
-        go.Scatter(
-            x=species_df["꽃잎 길이"],
-            y=species_df["꽃잎 너비"],
-            mode="markers",
-            name=species_names[species],
-            marker=dict(
-                size=9,
-                color=colors[species],
-                opacity=0.65
-            )
-        )
+    fig = px.scatter(
+        df,
+        x=x_column,
+        y=y_column,
+        color="품종",
+        category_orders={"품종": species_order},
+        color_discrete_sequence=[
+            "#F4A6C1",
+            "#8BC7E8",
+            "#A58BE8"
+        ],
+        title="붓꽃 데이터 분포와 입력한 꽃의 위치"
     )
 
-# 사용자 입력값: 형광 핑크 별
-fig.add_trace(
-    go.Scatter(
-        x=[petal_length],
-        y=[petal_width],
+    # 사용자가 입력한 꽃의 위치
+    fig.add_scatter(
+        x=[x_value],
+        y=[y_value],
         mode="markers",
-        name="내가 입력한 값",
+        name="내가 입력한 붓꽃",
         marker=dict(
             symbol="star",
-            size=27,
+            size=22,
             color="#FF1493",
             line=dict(
-                color="#FF69B4",
+                color="white",
                 width=2
             )
         ),
         hovertemplate=(
-            "사용자 입력값<br>"
-            "꽃잎 길이: %{x:.1f}cm<br>"
-            "꽃잎 너비: %{y:.1f}cm"
-            "<extra></extra>"
+            "내가 입력한 붓꽃<br>"
+            + x_column + ": %{x:.1f}cm<br>"
+            + y_column + ": %{y:.1f}cm"
+            + "<extra></extra>"
         )
     )
-)
 
-fig.update_layout(
-    xaxis_title="꽃잎 길이 (cm)",
-    yaxis_title="꽃잎 너비 (cm)",
-    height=600,
-    template="plotly_white",
-    hovermode="closest",
-    legend_title="붓꽃 품종"
-)
-
-fig.update_xaxes(
-    range=[length_min - 0.3, length_max + 0.3]
-)
-
-fig.update_yaxes(
-    range=[width_min - 0.15, width_max + 0.15]
-)
-
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
-
-# ----------------------------------
-# 11. 알고리즘별 작동 원리
-# ----------------------------------
-
-st.divider()
-
-st.header("📚 선택한 알고리즘의 작동 원리")
-
-# ==================================
-# KNN 설명
-# ==================================
-
-if algorithm == "KNN (K-최근접 이웃)":
-
-    st.subheader("🔵 KNN (K-Nearest Neighbors)")
-
-    st.write("""
-    KNN은 새로운 데이터와 가장 가까운 K개의 데이터를
-    찾아서 품종을 예측하는 알고리즘입니다.
-
-    이번 프로그램에서는 K=5를 사용합니다.
-    """)
-
-    st.markdown("### ① 가까운 데이터 5개 찾기")
-
-    scaler = model.named_steps["scaler"]
-    knn = model.named_steps["classifier"]
-
-    scaled_input = scaler.transform(input_data)
-    scaled_X = scaler.transform(X)
-
-    distances, indices = knn.kneighbors(
-        scaled_input
+    fig.update_layout(
+        height=550,
+        xaxis_title=x_column + " (cm)",
+        yaxis_title=y_column + " (cm)",
+        legend_title="붓꽃 품종",
+        template="plotly_white"
     )
 
-    neighbors = df.iloc[indices[0]].copy()
+    return fig
 
-    neighbors["거리"] = distances[0]
-    neighbors["순위"] = range(1, 6)
 
-    st.write("사용자 입력값과 가까운 데이터 5개입니다.")
+# --------------------------------------------------
+# 6. 알고리즘 작동 원리 설명
+# --------------------------------------------------
+
+def show_algorithm_explanations():
+
+    st.subheader("🤖 세 가지 알고리즘의 작동 원리")
+
+    with st.expander("① KNN - 가까운 이웃을 찾아 예측하는 알고리즘", expanded=True):
+
+        st.markdown("""
+        **KNN(K-Nearest Neighbors)은 주변의 가까운 데이터를 참고하는 방법입니다.**
+
+        1. 입력한 붓꽃의 꽃잎 또는 꽃받침 정보를 확인합니다.
+        2. 기존 붓꽃 데이터 중 입력값과 가까운 데이터 5개를 찾습니다.
+        3. 가장 많이 등장한 품종을 최종 예측 결과로 선택합니다.
+
+        📌 **쉽게 말하면?**
+
+        새로운 학생이 전학 왔을 때 주변에 있는 친구 5명의 특징을 살펴보고
+        가장 비슷한 유형을 판단하는 것과 비슷합니다.
+        """)
+
+    with st.expander("② 랜덤 포레스트 - 여러 개의 의사결정 나무를 활용"):
+
+        st.markdown("""
+        **랜덤 포레스트(Random Forest)는 여러 개의 의사결정 나무를 사용하는 방법입니다.**
+
+        1. 여러 개의 의사결정 나무를 만듭니다.
+        2. 각각의 나무가 입력한 붓꽃의 품종을 예측합니다.
+        3. 여러 나무의 예측 결과를 모읍니다.
+        4. 가장 많은 표를 받은 품종을 최종 결과로 선택합니다.
+
+        📌 **쉽게 말하면?**
+
+        여러 명의 전문가에게 의견을 물어보고
+        가장 많은 사람이 선택한 답을 결정하는 것과 비슷합니다.
+        """)
+
+    with st.expander("③ SVM - 품종을 구분하는 경계를 찾는 알고리즘"):
+
+        st.markdown("""
+        **SVM(Support Vector Machine)은 서로 다른 품종을 구분하는 경계를 찾는 방법입니다.**
+
+        1. 기존 붓꽃 데이터를 품종별로 살펴봅니다.
+        2. 서로 다른 품종을 가장 잘 구분할 수 있는 경계를 찾습니다.
+        3. 새로운 붓꽃 데이터가 어느 영역에 위치하는지 확인합니다.
+        4. 해당 영역에 맞는 품종을 예측합니다.
+
+        📌 **쉽게 말하면?**
+
+        서로 다른 두 그룹의 학생들 사이에 선을 그어
+        새로운 학생이 어느 그룹에 가까운지 판단하는 것과 비슷합니다.
+        """)
+
+
+# --------------------------------------------------
+# 7. 예측 결과 비교
+# --------------------------------------------------
+
+def show_comparison(result_df, accuracy_df):
+
+    st.subheader("📊 세 가지 알고리즘의 예측 결과 비교")
+
+    st.write("각 알고리즘이 어떤 품종으로 예측했는지 확인해 보세요.")
+
+    display_df = result_df.copy()
+
+    display_df["예측 품종"] = display_df["예측 품종"].apply(
+        lambda name: species_emojis[name] + " " + name
+    )
+
+    display_df["정확도"] = display_df["정확도"].apply(
+        lambda value: f"{value * 100:.1f}%"
+    )
 
     st.dataframe(
-        neighbors[
-            [
-                "순위",
-                "꽃잎 길이",
-                "꽃잎 너비",
-                "품종",
-                "거리"
-            ]
-        ].round(3),
+        display_df,
         use_container_width=True,
         hide_index=True
     )
 
-    st.markdown("### ② 주변 이웃의 투표 결과")
+    # 품종별 예측 횟수
+    count_df = (
+        result_df["예측 품종"]
+        .value_counts()
+        .reindex(species_order, fill_value=0)
+        .rename_axis("품종")
+        .reset_index(name="예측 알고리즘 수")
+    )
 
-    votes = neighbors["품종"].value_counts()
+    st.write("### 🏆 알고리즘별 예측 결과 분포")
 
-    vote_df = pd.DataFrame({
-        "품종": [
-            species_names[s]
-            for s in votes.index
+    fig = px.bar(
+        count_df,
+        x="품종",
+        y="예측 알고리즘 수",
+        color="품종",
+        category_orders={"품종": species_order},
+        color_discrete_sequence=[
+            "#F4A6C1",
+            "#8BC7E8",
+            "#A58BE8"
         ],
-        "투표 수": votes.values
-    })
-
-    st.bar_chart(
-        vote_df.set_index("품종")
+        text="예측 알고리즘 수"
     )
 
-    st.markdown("### ③ 최종 품종 결정")
-
-    st.success(
-        f"가장 많은 투표를 받은 품종: "
-        f"{species_names[prediction]}"
+    fig.update_layout(
+        height=350,
+        showlegend=False,
+        yaxis=dict(
+            tickmode="linear",
+            dtick=1,
+            range=[0, 3]
+        ),
+        template="plotly_white"
     )
 
-    st.info(
-        "가까운 이웃 5개 중 가장 많이 등장한 "
-        "품종을 최종 결과로 선택합니다."
+    st.plotly_chart(fig, use_container_width=True)
+
+    # 테스트 정확도 비교
+    st.write("### 🎯 알고리즘별 테스트 정확도")
+
+    accuracy_fig = px.bar(
+        accuracy_df,
+        x="알고리즘",
+        y="테스트 정확도",
+        color="알고리즘",
+        text="테스트 정확도",
+        color_discrete_sequence=[
+            "#F4A6C1",
+            "#8BC7E8",
+            "#A58BE8"
+        ]
     )
 
-# ==================================
-# Random Forest 설명
-# ==================================
-
-elif algorithm == "Random Forest (랜덤 포레스트)":
-
-    st.subheader("🌳 Random Forest (랜덤 포레스트)")
-
-    st.write("""
-    랜덤 포레스트는 여러 개의 의사결정나무를 만들어
-    각각 품종을 예측하게 한 뒤 결과를 종합하는 알고리즘입니다.
-
-    이번 프로그램에서는 100개의 의사결정나무를 사용합니다.
-    """)
-
-    st.markdown("### ① 여러 개의 의사결정나무 생성")
-
-    st.write("""
-    각각의 나무는 학습 데이터의 일부를 이용하여
-    서로 다른 분류 기준을 학습합니다.
-    """)
-
-    st.metric(
-        "생성한 의사결정나무 수",
-        "100개"
+    accuracy_fig.update_traces(
+        texttemplate="%{text:.1f}%",
+        textposition="outside"
     )
 
-    st.markdown("### ② 각 나무의 예측 결과")
-
-    tree_predictions = [
-        tree.predict(input_data)[0]
-        for tree in model.estimators_
-    ]
-
-    tree_votes = Counter(tree_predictions)
-
-    tree_df = pd.DataFrame({
-        "품종": [
-            species_names[s]
-            for s in tree_votes.keys()
-        ],
-        "투표 수": list(tree_votes.values())
-    })
-
-    st.bar_chart(
-        tree_df.set_index("품종")
+    accuracy_fig.update_layout(
+        height=350,
+        yaxis_title="정확도 (%)",
+        xaxis_title="알고리즘",
+        yaxis_range=[0, 110],
+        showlegend=False,
+        template="plotly_white"
     )
 
-    st.markdown("### ③ 다수결로 최종 결정")
+    st.plotly_chart(
+        accuracy_fig,
+        use_container_width=True
+    )
+
+    st.caption(
+        "※ 테스트 정확도는 학습에 사용하지 않은 테스트 데이터에서 "
+        "얼마나 정확하게 예측했는지를 나타냅니다. "
+        "이번 결과는 선택한 두 가지 속성만 사용한 모델의 결과입니다."
+    )
+
+
+# --------------------------------------------------
+# 8. 탭별 예측 화면
+# --------------------------------------------------
+
+def make_prediction_tab(
+    x_column,
+    y_column,
+    tab_title
+):
+
+    st.header(tab_title)
 
     st.write(
-        "100개의 의사결정나무가 내린 예측 결과를 "
-        "종합하여 최종 품종을 결정합니다."
+        "아래 두 가지 속성의 값을 입력하면 "
+        "세 가지 알고리즘이 붓꽃 품종을 예측합니다."
     )
 
-    st.success(
-        f"최종 예측 품종: {species_names[prediction]}"
+    col1, col2 = st.columns(2)
+
+    x_min = float(df[x_column].min())
+    x_max = float(df[x_column].max())
+    y_min = float(df[y_column].min())
+    y_max = float(df[y_column].max())
+
+    x_default = float(df[x_column].mean())
+    y_default = float(df[y_column].mean())
+
+    with col1:
+        x_value = st.number_input(
+            x_column + " (cm)",
+            min_value=x_min,
+            max_value=x_max,
+            value=x_default,
+            step=0.1,
+            format="%.1f",
+            key=tab_title + "_x"
+        )
+
+    with col2:
+        y_value = st.number_input(
+            y_column + " (cm)",
+            min_value=y_min,
+            max_value=y_max,
+            value=y_default,
+            step=0.1,
+            format="%.1f",
+            key=tab_title + "_y"
+        )
+
+    st.info(
+        "입력한 값: "
+        + x_column + " "
+        + f"{x_value:.1f}cm / "
+        + y_column + " "
+        + f"{y_value:.1f}cm"
     )
 
-# ==================================
-# SVM 설명
-# ==================================
+    # 그래프
+    st.subheader("📍 붓꽃 데이터 분포")
 
-elif algorithm == "SVM (서포트 벡터 머신)":
-
-    st.subheader("🟣 SVM (Support Vector Machine)")
-
-    st.write("""
-    SVM은 서로 다른 품종의 데이터를 구분하는
-    가장 적절한 경계를 찾는 분류 알고리즘입니다.
-    """)
-
-    st.markdown("### ① 데이터 분포 확인")
-
-    st.write("""
-    꽃잎 길이와 꽃잎 너비를 기준으로
-    세 가지 붓꽃 품종이 어디에 분포하는지 학습합니다.
-    """)
-
-    st.markdown("### ② 최적의 분류 경계 찾기")
-
-    st.write("""
-    SVM은 품종 사이를 구분하는 경계를 학습합니다.
-
-    경계와 가장 가까운 데이터인 서포트 벡터를 기준으로
-    데이터 사이의 간격(Margin)을 최대화합니다.
-    """)
-
-    st.markdown("### ③ 새로운 데이터 분류")
-
-    st.write("""
-    새로운 붓꽃 데이터가 입력되면 학습된 분류 경계를
-    이용하여 어떤 품종에 속하는지 예측합니다.
-
-    이번 프로그램에서는 RBF 커널을 사용하여
-    직선으로 나누기 어려운 비선형 관계도 학습할 수 있습니다.
-    """)
-
-    st.success(
-        f"최종 예측 품종: {species_names[prediction]}"
+    fig = draw_scatter_graph(
+        x_column,
+        y_column,
+        x_value,
+        y_value
     )
 
-# ----------------------------------
-# 12. 데이터 정보
-# ----------------------------------
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+    # 그래프 아래 알고리즘 설명
+    show_algorithm_explanations()
+
+    st.divider()
+
+    # 세 알고리즘 예측
+    result_df, accuracy_df = run_prediction(
+        x_column,
+        y_column,
+        x_value,
+        y_value
+    )
+
+    st.subheader("🌸 AI 품종 예측 결과")
+
+    for _, row in result_df.iterrows():
+
+        species = row["예측 품종"]
+        emoji = species_emojis[species]
+
+        st.success(
+            row["알고리즘"]
+            + " 예측 결과: "
+            + emoji
+            + " "
+            + species
+        )
+
+    # 결과 비교
+    show_comparison(
+        result_df,
+        accuracy_df
+    )
+
+
+# --------------------------------------------------
+# 9. 전체 데이터 정보
+# --------------------------------------------------
+
+with st.expander("📚 붓꽃 데이터셋 알아보기"):
+
+    st.write("""
+    이 앱은 머신러닝 공부에 자주 사용되는 Iris 붓꽃 데이터셋을 사용합니다.
+
+    붓꽃 데이터에는 세 가지 품종이 있으며,
+    각 품종의 꽃받침과 꽃잎 길이 및 너비가 기록되어 있습니다.
+    """)
+
+    st.write("전체 데이터 개수:", len(df))
+
+    st.write("품종별 데이터 개수")
+
+    st.dataframe(
+        df["품종"].value_counts().rename("데이터 개수"),
+        use_container_width=True
+    )
+
+
+# --------------------------------------------------
+# 10. 두 가지 속성 조합을 탭으로 구분
+# --------------------------------------------------
+
+tab1, tab2 = st.tabs([
+    "🌸 꽃잎 길이 + 꽃잎 너비",
+    "🍃 꽃받침 길이 + 꽃받침 너비"
+])
+
+with tab1:
+
+    make_prediction_tab(
+        "꽃잎 길이",
+        "꽃잎 너비",
+        "꽃잎 속성 예측"
+    )
+
+with tab2:
+
+    make_prediction_tab(
+        "꽃받침 길이",
+        "꽃받침 너비",
+        "꽃받침 속성 예측"
+    )
+
+
+# --------------------------------------------------
+# 11. 마무리
+# --------------------------------------------------
 
 st.divider()
 
-st.subheader("📚 학습 데이터 정보")
-
-c1, c2, c3 = st.columns(3)
-
-c1.metric("전체 데이터", f"{len(df)}개")
-c2.metric("붓꽃 품종", f"{df['품종'].nunique()}종")
-c3.metric("사용 알고리즘", "3개")
-
 st.caption(
-    "Iris 데이터의 꽃잎 길이와 너비를 이용하여 "
-    "세 가지 머신러닝 분류 알고리즘을 비교하는 프로그램입니다."
+    "🌸 붓꽃 품종 예측 AI | "
+    "KNN · Random Forest · SVM"
 )
-
