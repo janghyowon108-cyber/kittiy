@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import random
 import re
-from pathlib import Path  # ← 이 줄 추가!# =========================================================
+from pathlib import Path  #
 # CSV 파일 자동 탐색
 # =========================================================
 BASE_DIR = Path(__file__).resolve().parent.parent
